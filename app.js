@@ -439,6 +439,310 @@ function copyToClipboard() {
     });
 }
 
+// =====================================================
+// BILL SCANNER FUNCTIONALITY
+// =====================================================
+
+let tesseractLoaded = false;
+let extractedItems = [];
+
+// Scanner DOM Elements
+const scannerElements = {
+    scanBillBtn: document.getElementById('scan-bill-btn'),
+    billImageInput: document.getElementById('bill-image-input'),
+    scanModal: document.getElementById('scan-modal'),
+    scanModalOverlay: document.getElementById('scan-modal-overlay'),
+    scanModalClose: document.getElementById('scan-modal-close'),
+    billPreview: document.getElementById('bill-preview'),
+    scanLoading: document.getElementById('scan-loading'),
+    extractedItemsContainer: document.getElementById('extracted-items-container'),
+    extractedItemsList: document.getElementById('extracted-items-list'),
+    scanModalActions: document.getElementById('scan-modal-actions'),
+    addScannedItemsBtn: document.getElementById('add-scanned-items-btn'),
+    cancelScanBtn: document.getElementById('cancel-scan-btn')
+};
+
+// Initialize scanner event listeners
+function initScanner() {
+    scannerElements.scanBillBtn.addEventListener('click', openFileInput);
+    scannerElements.billImageInput.addEventListener('change', handleImageSelect);
+    scannerElements.scanModalClose.addEventListener('click', closeScanModal);
+    scannerElements.scanModalOverlay.addEventListener('click', closeScanModal);
+    scannerElements.cancelScanBtn.addEventListener('click', closeScanModal);
+    scannerElements.addScannedItemsBtn.addEventListener('click', addScannedItems);
+}
+
+// Load Tesseract.js dynamically
+async function loadTesseract() {
+    if (tesseractLoaded) return true;
+
+    try {
+        // Load Tesseract.js from CDN
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        document.head.appendChild(script);
+
+        await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = reject;
+        });
+
+        tesseractLoaded = true;
+        return true;
+    } catch (error) {
+        console.error('Failed to load Tesseract.js:', error);
+        alert('Failed to load OCR library. Please check your internet connection.');
+        return false;
+    }
+}
+
+// Open file input
+function openFileInput() {
+    scannerElements.billImageInput.click();
+}
+
+// Handle image selection
+async function handleImageSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Show modal
+    scannerElements.scanModal.classList.remove('hidden');
+
+    // Show image preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        scannerElements.billPreview.src = e.target.result;
+        scannerElements.billPreview.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+
+    // Start processing
+    await processReceipt(file);
+}
+
+// Close scan modal
+function closeScanModal() {
+    scannerElements.scanModal.classList.add('hidden');
+    scannerElements.billPreview.classList.add('hidden');
+    scannerElements.scanLoading.classList.add('hidden');
+    scannerElements.extractedItemsContainer.classList.add('hidden');
+    scannerElements.scanModalActions.classList.add('hidden');
+    scannerElements.billImageInput.value = '';
+    extractedItems = [];
+}
+
+// Process receipt with OCR
+async function processReceipt(imageFile) {
+    // Show loading
+    scannerElements.scanLoading.classList.remove('hidden');
+    scannerElements.extractedItemsContainer.classList.add('hidden');
+    scannerElements.scanModalActions.classList.add('hidden');
+
+    try {
+        // Load Tesseract if not already loaded
+        const loaded = await loadTesseract();
+        if (!loaded) {
+            closeScanModal();
+            return;
+        }
+
+        // Initialize Tesseract worker
+        const worker = await Tesseract.createWorker('eng');
+
+        // Process image
+        const { data: { text } } = await worker.recognize(imageFile);
+
+        // Terminate worker
+        await worker.terminate();
+
+        // Parse text for items
+        extractedItems = parseReceiptText(text);
+
+        // Show results
+        displayExtractedItems();
+
+    } catch (error) {
+        console.error('OCR processing failed:', error);
+        alert('Failed to process receipt. Please try again or add items manually.');
+        closeScanModal();
+    }
+}
+
+// Parse receipt text to extract items
+function parseReceiptText(text) {
+    const lines = text.split('\n');
+    const items = [];
+
+    // Common receipt patterns
+    const patterns = [
+        // "Item Name ... $12.99" or "Item Name .... 12.99"
+        /^(.+?)\s*[\.]{2,}\s*\$?(\d+\.\d{2})$/,
+        // "Item Name $12.99" or "Item Name 12.99"
+        /^(.+?)\s+\$?(\d+\.\d{2})$/,
+        // "12.99 Item Name" (price first)
+        /^\$?(\d+\.\d{2})\s+(.+)$/,
+    ];
+
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        // Skip empty lines or very short lines
+        if (trimmedLine.length < 3) continue;
+
+        // Skip lines that look like headers or totals
+        if (/^(total|subtotal|tax|tip|payment|card|cash|change)/i.test(trimmedLine)) continue;
+
+        let matched = false;
+
+        // Try each pattern
+        for (const pattern of patterns) {
+            const match = trimmedLine.match(pattern);
+
+            if (match) {
+                let name, price;
+
+                // Check if price is first or second group
+                if (pattern.source.startsWith('^\\$?\\(\\\\d')) {
+                    // Price first pattern
+                    price = parseFloat(match[1]);
+                    name = match[2].trim();
+                } else {
+                    // Name first pattern
+                    name = match[1].trim();
+                    price = parseFloat(match[2]);
+                }
+
+                // Validate price is reasonable
+                if (price > 0 && price < 1000) {
+                    // Clean up name
+                    name = name.replace(/[\.]+$/g, '').trim();
+
+                    // Check if name seems reasonable (not just numbers or weird characters)
+                    if (name.length > 0 && name.length < 50) {
+                        items.push({
+                            name: name,
+                            price: price,
+                            isPlaceholder: false,
+                            selected: true
+                        });
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If we found a price but couldn't extract a good name
+        if (!matched && /\d+\.\d{2}/.test(trimmedLine)) {
+            const priceMatch = trimmedLine.match(/(\d+\.\d{2})/);
+            if (priceMatch) {
+                const price = parseFloat(priceMatch[1]);
+                if (price > 0 && price < 1000) {
+                    items.push({
+                        name: '[Item Name]',
+                        price: price,
+                        isPlaceholder: true,
+                        selected: true
+                    });
+                }
+            }
+        }
+    }
+
+    return items;
+}
+
+// Display extracted items in modal
+function displayExtractedItems() {
+    scannerElements.scanLoading.classList.add('hidden');
+
+    if (extractedItems.length === 0) {
+        alert('No items found in the receipt. Please add items manually.');
+        closeScanModal();
+        return;
+    }
+
+    scannerElements.extractedItemsContainer.classList.remove('hidden');
+    scannerElements.scanModalActions.classList.remove('hidden');
+
+    scannerElements.extractedItemsList.innerHTML = extractedItems.map((item, index) => `
+        <div class="extracted-item ${item.isPlaceholder ? 'placeholder' : ''}">
+            <input 
+                type="checkbox" 
+                class="extracted-item-checkbox" 
+                id="extracted-${index}" 
+                ${item.selected ? 'checked' : ''}
+                onchange="toggleExtractedItem(${index})"
+            >
+            <div class="extracted-item-inputs">
+                <input 
+                    type="text" 
+                    class="extracted-item-name" 
+                    value="${escapeHtml(item.name)}"
+                    placeholder="Item name"
+                    onchange="updateExtractedItemName(${index}, this.value)"
+                >
+                <input 
+                    type="number" 
+                    class="extracted-item-price" 
+                    value="${item.price.toFixed(2)}"
+                    step="0.01"
+                    min="0"
+                    placeholder="Price"
+                    onchange="updateExtractedItemPrice(${index}, this.value)"
+                >
+            </div>
+        </div>
+    `).join('');
+}
+
+// Toggle extracted item selection
+function toggleExtractedItem(index) {
+    extractedItems[index].selected = !extractedItems[index].selected;
+}
+
+// Update extracted item name
+function updateExtractedItemName(index, newName) {
+    extractedItems[index].name = newName;
+    // Remove placeholder flag if user edits
+    extractedItems[index].isPlaceholder = false;
+}
+
+// Update extracted item price
+function updateExtractedItemPrice(index, newPrice) {
+    extractedItems[index].price = parseFloat(newPrice) || 0;
+}
+
+// Add selected scanned items to main list
+function addScannedItems() {
+    const selectedItems = extractedItems.filter(item => item.selected && item.name && item.price > 0);
+
+    if (selectedItems.length === 0) {
+        alert('Please select at least one item with a valid name and price.');
+        return;
+    }
+
+    // Add each selected item to state
+    selectedItems.forEach(item => {
+        state.items.push({
+            id: Date.now() + Math.random(), // Ensure unique IDs
+            name: item.name,
+            price: item.price,
+            assignedTo: []
+        });
+    });
+
+    // Re-render items list
+    renderItems();
+
+    // Close modal
+    closeScanModal();
+
+    // Scroll to items section
+    elements.itemsList.scrollIntoView({ behavior: 'smooth' });
+}
+
 // Utility function to escape HTML
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -447,4 +751,5 @@ function escapeHtml(text) {
 }
 
 // Initialize app
+initScanner();
 init();

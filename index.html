@@ -74,6 +74,14 @@
                 Add Item
             </button>
 
+            <button class="btn btn-secondary btn-full mt-md" id="scan-bill-btn">
+                <span class="btn-icon">📸</span>
+                Scan Bill
+            </button>
+
+            <!-- Hidden file input for image upload -->
+            <input type="file" accept="image/*" capture="environment" id="bill-image-input" hidden>
+
             <ul class="item-list mt-lg" id="items-list">
                 <div class="empty-state">
                     <div class="empty-state-icon">🍽️</div>
@@ -134,6 +142,47 @@
                 </button>
             </div>
         </section>
+
+        <!-- Scan Bill Modal -->
+        <div class="scan-modal hidden" id="scan-modal">
+            <div class="scan-modal-overlay" id="scan-modal-overlay"></div>
+            <div class="scan-modal-content">
+                <div class="scan-modal-header">
+                    <h3>Scan Receipt</h3>
+                    <button class="scan-modal-close" id="scan-modal-close">✕</button>
+                </div>
+
+                <!-- Image Preview -->
+                <div class="scan-preview-container" id="scan-preview-container">
+                    <img id="bill-preview" class="bill-preview hidden" alt="Receipt preview">
+                </div>
+
+                <!-- Loading State -->
+                <div class="scan-loading hidden" id="scan-loading">
+                    <div class="scan-spinner"></div>
+                    <p>Processing receipt...</p>
+                    <p class="scan-loading-subtext">This may take 10-20 seconds</p>
+                </div>
+
+                <!-- Extracted Items -->
+                <div class="extracted-items-container hidden" id="extracted-items-container">
+                    <p class="scan-instructions">Review and edit the extracted items. Items with placeholders are
+                        highlighted.</p>
+                    <div class="extracted-items-list" id="extracted-items-list">
+                        <!-- Items will be added here dynamically -->
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="scan-modal-actions hidden" id="scan-modal-actions">
+                    <button class="btn btn-primary" id="add-scanned-items-btn">
+                        <span class="btn-icon">✓</span>
+                        Add Selected Items
+                    </button>
+                    <button class="btn btn-secondary" id="cancel-scan-btn">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>
