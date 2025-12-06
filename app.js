@@ -421,7 +421,11 @@ function copyToClipboard() {
     });
 
     text += `Total Bill: $${grandTotal.toFixed(2)}\n`;
-    text += `(Subtotal: $${subtotal.toFixed(2)} + Tax: $${currentTax.toFixed(2)} + Tip: $${actualTip.toFixed(2)})`;
+    text += `(Subtotal: $${subtotal.toFixed(2)} + Tax: $${currentTax.toFixed(2)} + Tip: $${actualTip.toFixed(2)})\n\n`;
+    text += `---\n`;
+    text += `Split your bills fairly with FairSplit!\n`;
+    text += `🌐 https://raghavagg4.github.io/fairsplit/`;
+
 
     // Copy to clipboard
     navigator.clipboard.writeText(text).then(() => {
