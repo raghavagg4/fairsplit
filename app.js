@@ -309,14 +309,14 @@ function calculateSplit() {
         });
     });
 
-    // Divide tax and tip equally among all people
-    const taxPerPerson = state.tax / state.people.length;
-    const tipPerPerson = state.tip / state.people.length;
-
+    // Divide tax and tip proportionally based on each person's share of the subtotal
     state.people.forEach(person => {
-        results[person.id].taxShare = taxPerPerson;
-        results[person.id].tipShare = tipPerPerson;
-        results[person.id].total = results[person.id].itemsTotal + taxPerPerson + tipPerPerson;
+        const personSubtotal = results[person.id].itemsTotal;
+        const proportion = subtotal > 0 ? personSubtotal / subtotal : 1 / state.people.length;
+
+        results[person.id].taxShare = state.tax * proportion;
+        results[person.id].tipShare = state.tip * proportion;
+        results[person.id].total = results[person.id].itemsTotal + results[person.id].taxShare + results[person.id].tipShare;
     });
 
     // Render results
@@ -390,13 +390,14 @@ function copyToClipboard() {
         });
     });
 
-    const taxPerPerson = currentTax / state.people.length;
-    const tipPerPerson = actualTip / state.people.length;
-
+    // Use proportional splitting for tax and tip
     state.people.forEach(person => {
-        results[person.id].taxShare = taxPerPerson;
-        results[person.id].tipShare = tipPerPerson;
-        results[person.id].total = results[person.id].itemsTotal + taxPerPerson + tipPerPerson;
+        const personSubtotal = results[person.id].itemsTotal;
+        const proportion = subtotal > 0 ? personSubtotal / subtotal : 1 / state.people.length;
+
+        results[person.id].taxShare = currentTax * proportion;
+        results[person.id].tipShare = actualTip * proportion;
+        results[person.id].total = results[person.id].itemsTotal + results[person.id].taxShare + results[person.id].tipShare;
     });
 
     // Format for text
